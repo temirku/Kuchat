@@ -1,242 +1,88 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KuChat</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <style>
-        :root { --primary: #3390ec; --bg: #ffffff; --text: #000000; --gray: #f5f5f5; --error: #ff3b30; }
-        body { margin: 0; font-family: 'Roboto', sans-serif; background: var(--bg); overflow: hidden; height: 100vh; }
-        
-        /* Экраны */
-        .screen { display: none; height: 100%; flex-direction: column; align-items: center; justify-content: center; width: 100%; position: absolute; top: 0; left: 0; background: white; transition: opacity 0.3s; }
-        .active { display: flex; z-index: 10; }
+<style>
+    .media-btn { font-size: 24px; cursor: pointer; padding: 5px; color: var(--primary); }
+    .msg-img { max-width: 200px; border-radius: 10px; margin-top: 5px; }
+    audio { height: 35px; margin-top: 5px; }
+    .recording { color: red; animation: blink 1s infinite; }
+    @keyframes blink { 0% {opacity:1} 50% {opacity:0.3} 100% {opacity:1} }
+</style>
 
-        /* Логотип и Приветствие */
-        .logo-circle { width: 120px; height: 120px; background: #e6f3ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
-        .logo-img { width: 60%; height: auto; } /* Сюда вставится твое лого */
-        h1 { font-size: 28px; font-weight: 700; margin: 0; margin-bottom: 10px; }
-        p { color: #888; font-size: 16px; margin: 0; margin-bottom: 40px; }
-        
-        /* Кнопка-стрелка */
-        .arrow-btn { width: 60px; height: 60px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 4px 10px rgba(51, 144, 236, 0.4); position: absolute; bottom: 50px; }
-        .arrow-btn::after { content: '➜'; color: white; font-size: 24px; }
+<div class="footer">
+    <label class="media-btn">📎<input type="file" id="photo-input" hidden accept="image/*" onchange="sendPhoto()"></label>
+    <input type="text" id="msg-input" placeholder="Сообщение...">
+    <div id="mic-btn" class="media-btn" onclick="toggleRecording()">🎤</div>
+    <button onclick="sendText()">ОТПРАВИТЬ</button>
+</div>
 
-        /* Формы (Вход/Регистрация) */
-        .auth-title { font-size: 32px; font-weight: bold; margin-bottom: 40px; align-self: flex-start; padding-left: 40px; }
-        .input-group { width: 80%; margin-bottom: 15px; }
-        input { width: 100%; padding: 15px; border: 1px solid #ddd; border-radius: 12px; font-size: 16px; outline: none; background: var(--gray); box-sizing: border-box; }
-        input:focus { border-color: var(--primary); background: white; }
-        .error-msg { color: var(--error); font-size: 14px; height: 20px; margin-bottom: 10px; opacity: 0; }
-        .link { color: var(--primary); font-size: 14px; margin-top: 20px; cursor: pointer; }
+<script>
+    let mediaRecorder;
+    let audioChunks = [];
 
-        /* Настройка профиля */
-        .avatar-upload { width: 100px; height: 100px; background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; margin-bottom: 30px; position: relative; }
-        .avatar-upload img { width: 100%; height: 100%; object-fit: cover; display: none; }
-        .avatar-upload::after { content: '📷'; font-size: 30px; color: #666; }
-        .avatar-upload.has-img::after { content: ''; }
+    // Функция отправки текста
+    async function sendText() {
+        const input = document.getElementById('msg-input');
+        if(!input.value) return;
+        await sendMessage({content: input.value, msg_type: 'text'});
+        input.value = '';
+    }
 
-        /* Главный экран (Чаты) */
-        #main-screen { justify-content: flex-start; }
-        .app-header { width: 100%; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; background: white; }
-        .app-title { font-size: 22px; font-weight: bold; }
-        .search-icon { font-size: 24px; cursor: pointer; }
-        
-        .profile-row { width: 100%; padding: 0 20px; margin-bottom: 10px; box-sizing: border-box; }
-        .mini-avatar { width: 40px; height: 40px; border-radius: 50%; background: #ddd; overflow: hidden; cursor: pointer; }
-        .mini-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    // Функция отправки фото
+    function sendPhoto() {
+        const file = document.getElementById('photo-input').files[0];
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            await sendMessage({file_data: reader.result, msg_type: 'photo'});
+        };
+        reader.readAsDataURL(file);
+    }
 
-        .chat-list { width: 100%; flex: 1; overflow-y: auto; }
-        .chat-item { display: flex; padding: 10px 20px; align-items: center; border-bottom: 1px solid #f0f0f0; }
-        .chat-info { margin-left: 15px; }
-        .chat-name { font-weight: bold; font-size: 16px; }
-        .chat-last { color: #888; font-size: 14px; }
+    // Запись голоса
+    async function toggleRecording() {
+        const btn = document.getElementById('mic-btn');
+        if (!mediaRecorder || mediaRecorder.state === "inactive") {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = async () => {
+                const blob = new Blob(audioChunks, { type: 'audio/ogg' });
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    await sendMessage({file_data: reader.result, msg_type: 'audio'});
+                };
+                reader.readAsDataURL(blob);
+                audioChunks = [];
+            };
+            mediaRecorder.start();
+            btn.classList.add('recording');
+        } else {
+            mediaRecorder.stop();
+            btn.classList.remove('recording');
+        }
+    }
 
-        .fab { width: 56px; height: 56px; background: var(--primary); border-radius: 50%; position: absolute; bottom: 20px; right: 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); cursor: pointer; }
+    async function sendMessage(data) {
+        await fetch('/send', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({...data, sender: currentUser})
+        });
+        loadMessages();
+    }
 
-        /* Экран поиска */
-        .search-bar { width: 100%; padding: 10px; background: #f0f0f0; display: flex; align-items: center; }
-        
-    </style>
-</head>
-<body>
-
-    <div id="welcome-screen" class="screen active">
-        <div class="logo-circle">
-            <svg viewBox="0 0 100 100" width="60" height="60" fill="#3390ec">
-                <path d="M50 10 L90 90 L50 70 L10 90 Z" fill="white"/>
-            </svg>
-        </div>
-        <h1>KuChat</h1>
-        <p>Начните переписываться в KuChat</p>
-        <button class="arrow-btn" onclick="showScreen('login-screen')"></button>
-    </div>
-
-    <div id="login-screen" class="screen">
-        <div class="auth-title">Вход</div>
-        <div class="input-group"><input type="text" id="login-username" placeholder="Логин"></div>
-        <div class="input-group"><input type="password" id="login-password" placeholder="Пароль"></div>
-        <div class="error-msg" id="login-error">Неверный Логин или Пароль</div>
-        <div class="link" onclick="showScreen('register-screen')">Зарегистрироваться</div>
-        <button class="arrow-btn" onclick="performLogin()"></button>
-    </div>
-
-    <div id="register-screen" class="screen">
-        <div class="auth-title">Регистрация</div>
-        <div class="input-group"><input type="text" id="reg-username" placeholder="Придумайте логин"></div>
-        <div class="input-group"><input type="password" id="reg-password" placeholder="Придумайте пароль"></div>
-        <div class="error-msg" id="reg-error"></div>
-        <button class="arrow-btn" onclick="performRegister()"></button>
-    </div>
-
-    <div id="setup-screen" class="screen">
-        <h3>Настройте профиль</h3>
-        <label class="avatar-upload" id="avatar-preview-box">
-            <input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="previewAvatar()">
-            <img id="avatar-img" src="">
-        </label>
-        <div class="input-group"><input type="text" id="setup-name" placeholder="Имя Профиля"></div>
-        <button class="arrow-btn" onclick="finishSetup()"></button>
-    </div>
-
-    <div id="main-screen" class="screen">
-        <div class="app-header">
-            <div class="app-title">KuChat</div>
-            <div class="search-icon" onclick="showScreen('search-screen')">🔍</div>
-        </div>
-        <div class="profile-row">
-            <div class="mini-avatar" onclick="showScreen('setup-screen')"><img id="main-avatar" src=""></div>
-        </div>
-        <div class="chat-list" id="chat-list">
+    async function loadMessages() {
+        const res = await fetch('/get_messages');
+        const msgs = await res.json();
+        const win = document.getElementById('chat-list');
+        win.innerHTML = msgs.map(m => `
             <div class="chat-item">
-                <div class="mini-avatar" style="background:gold"></div>
                 <div class="chat-info">
-                    <div class="chat-name">Избранное</div>
-                    <div class="chat-last">Добро пожаловать в KuChat!</div>
+                    <b>${m.sender}</b><br>
+                    ${m.msg_type === 'text' ? m.content : ''}
+                    ${m.msg_type === 'photo' ? `<img src="${m.file_data}" class="msg-img">` : ''}
+                    ${m.msg_type === 'audio' ? `<audio src="${m.file_data}" controls></audio>` : ''}
                 </div>
             </div>
-        </div>
-        <div class="fab" onclick="alert('Создание группы скоро будет!')">+</div>
-    </div>
-
-    <div id="search-screen" class="screen">
-        <div class="app-header">
-            <div class="search-icon" onclick="showScreen('main-screen')">⬅</div>
-            <input type="text" id="search-input" placeholder="Поиск..." oninput="performSearch()" style="width: 80%; border:none; background: transparent;">
-        </div>
-        <div class="chat-list" id="search-results"></div>
-    </div>
-
-    <script>
-        let currentUser = '';
-        let currentAvatar = '';
-
-        // Переключение экранов
-        function showScreen(id) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-        }
-
-        // Логика регистрации
-        async function performRegister() {
-            const u = document.getElementById('reg-username').value;
-            const p = document.getElementById('reg-password').value;
-            
-            if(!u || !p) return;
-
-            const res = await fetch('/api/register', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: u, password: p})
-            });
-            const data = await res.json();
-            
-            if(data.success) {
-                // Переход на настройку профиля
-                currentUser = u;
-                document.getElementById('setup-name').value = u;
-                showScreen('setup-screen');
-            } else {
-                document.getElementById('reg-error').innerText = data.message;
-                document.getElementById('reg-error').style.opacity = 1;
-            }
-        }
-
-        // Логика входа
-        async function performLogin() {
-            const u = document.getElementById('login-username').value;
-            const p = document.getElementById('login-password').value;
-            
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: u, password: p})
-            });
-            const data = await res.json();
-            
-            if(data.success) {
-                currentUser = data.username;
-                currentAvatar = data.avatar;
-                if(currentAvatar) document.getElementById('main-avatar').src = currentAvatar;
-                showScreen('main-screen');
-            } else {
-                document.getElementById('login-error').style.opacity = 1;
-            }
-        }
-
-        // Предпросмотр фото
-        function previewAvatar() {
-            const file = document.getElementById('avatar-input').files[0];
-            const reader = new FileReader();
-            reader.onloadend = function() {
-                document.getElementById('avatar-img').src = reader.result;
-                document.getElementById('avatar-img').style.display = 'block';
-                document.getElementById('avatar-preview-box').classList.add('has-img');
-                currentAvatar = reader.result;
-            }
-            if(file) reader.readAsDataURL(file);
-        }
-
-        // Завершение настройки
-        async function finishSetup() {
-            const newName = document.getElementById('setup-name').value;
-            
-            await fetch('/api/update_profile', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    old_username: currentUser,
-                    new_username: newName,
-                    avatar: currentAvatar
-                })
-            });
-            
-            document.getElementById('main-avatar').src = currentAvatar || '';
-            showScreen('main-screen');
-        }
-
-        // Поиск
-        async function performSearch() {
-            const query = document.getElementById('search-input').value;
-            const res = await fetch('/api/search', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({query: query})
-            });
-            const users = await res.json();
-            
-            const resultsDiv = document.getElementById('search-results');
-            resultsDiv.innerHTML = '';
-            users.forEach(u => {
-                resultsDiv.innerHTML += `
-                    <div class="chat-item">
-                        <div class="mini-avatar"><img src="${u.avatar || ''}"></div>
-                        <div class="chat-info"><div class="chat-name">${u.username}</div></div>
-                    </div>`;
-            });
-        }
-    </script>
-</body>
-</html>
+        `).join('');
+    }
+    setInterval(loadMessages, 3000); // Обновление чата каждые 3 сек
+</script>
 
