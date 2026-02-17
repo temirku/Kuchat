@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KuChat Secure</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { background: #1a1a1a; color: #d4af37; font-family: sans-serif; }
+        #chat { list-style: none; padding: 0; margin-bottom: 50px; }
+        li { padding: 8px; border-bottom: 1px solid #333; }
+        .user { font-weight: bold; color: #fff; }
+        #form { position: fixed; bottom: 0; width: 100%; display: flex; background: #000; }
+        input { flex-grow: 1; padding: 10px; border: none; }
+        button { background: #d4af37; border: none; padding: 10px; }
+    </style>
+</head>
+<body>
+    <ul id="chat"></ul>
+    <form id="form">
+        <input id="input" autocomplete="off" placeholder="Зашифрованное сообщение..." /><button>Отправить</button>
+    </form>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const key = "KBR-AVIA";
+
+        function decrypt(b64) {
+            try {
+                let text = atob(b64);
+                let result = "";
+                for (let i = 0; i < text.length; i++) {
+                    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+                }
+                return result;
+            } catch(e) { return "Ошибка расшифровки"; }
+        }
+
+        const user = "User_" + Math.floor(Math.random() * 1000);
+
+        document.getElementById('form').onsubmit = function(e) {
+            e.preventDefault();
+            const input = document.getElementById('input');
+            if (input.value) {
+                socket.emit('chat message', { user: user, msg: input.value });
+                input.value = '';
+            }
+        };
+
+        socket.on('chat message', function(data) {
+            const li = document.createElement('li');
+            li.innerHTML = '<span class="user">' + data.user + ':</span> ' + decrypt(data.msg);
+            document.getElementById('chat').appendChild(li);
+            window.scrollTo(0, document.body.scrollHeight);
+        });
+
+        socket.on('chat history', function(rows) {
+            rows.forEach(data => {
+                const li = document.createElement('li');
+                li.innerHTML = '<span class="user">' + data.user + ':</span> ' + decrypt(data.msg);
+                document.getElementById('chat').appendChild(li);
+            });
+        });
+    </script>
+</body>
+</html>

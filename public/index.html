@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>KuChat</title>
+    <style>
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        .circle { width: 140px; height: 140px; background: #3498db; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .elbrus { width: 60px; height: 40px; border-bottom: 3px solid #1a3a5a; position: relative; }
+        .kuchat-text { margin-top: 20px; font-size: 24px; letter-spacing: 2px; font-weight: bold; }
+        #auth { display: none; text-align: center; }
+        input { background: #111; border: 1px solid #333; color: #fff; padding: 10px; border-radius: 5px; margin: 5px; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="splash">
+        <div class="circle"><div class="elbrus"></div></div>
+        <div class="kuchat-text">KuChat</div>
+    </div>
+    <div id="auth">
+        <h2>Вход в KuChat</h2>
+        <input type="text" placeholder="Имя"><br>
+        <button onclick="alert('Вход выполнен!')">ВОЙТИ</button>
+    </div>
+    <script>
+        setTimeout(() => {
+            document.getElementById('splash').style.display = 'none';
+            document.getElementById('auth').style.display = 'block';
+        }, 3000);
+    </script>
+</body>
+</html>
